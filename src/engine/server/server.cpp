@@ -503,12 +503,15 @@ void CServer::DoSnapshot()
 {
 	GameServer()->OnPreSnap();
 
+	static char aData[CSnapshot::MAX_SIZE];
+	static char aDeltaData[CSnapshot::MAX_SIZE];
+	static char aCompData[CSnapshot::MAX_SIZE];
+	static CSnapshot EmptySnap;
+	int SnapshotSize;
+
 	// create snapshot for demo recording
 	if(m_DemoRecorder.IsRecording())
 	{
-		char aData[CSnapshot::MAX_SIZE];
-		int SnapshotSize;
-
 		// build snap and possibly add some messages
 		m_SnapshotBuilder.Init();
 		GameServer()->OnSnap(-1);
@@ -534,14 +537,9 @@ void CServer::DoSnapshot()
 			continue;
 
 		{
-			char aData[CSnapshot::MAX_SIZE];
 			CSnapshot *pData = (CSnapshot*)aData;	// Fix compiler warning for strict-aliasing
-			char aDeltaData[CSnapshot::MAX_SIZE];
-			char aCompData[CSnapshot::MAX_SIZE];
-			int SnapshotSize;
-			int Crc;
-			static CSnapshot EmptySnap;
 			CSnapshot *pDeltashot = &EmptySnap;
+			int Crc;
 			int DeltashotSize;
 			int DeltaTick = -1;
 			int DeltaSize;
@@ -582,38 +580,34 @@ void CServer::DoSnapshot()
 			if(DeltaSize > 0)
 			{
 				// compress it
-				int SnapshotSize;
-				const int MaxSize = MAX_SNAPSHOT_PACKSIZE;
-				int NumPackets;
+				int CompressedSize = CVariableInt::Compress(aDeltaData, DeltaSize, aCompData, sizeof(aCompData));
+				int NumPackets = (CompressedSize + MAX_SNAPSHOT_PACKSIZE - 1) / MAX_SNAPSHOT_PACKSIZE;
 
-				SnapshotSize = CVariableInt::Compress(aDeltaData, DeltaSize, aCompData, sizeof(aCompData));
-				NumPackets = (SnapshotSize+MaxSize-1)/MaxSize;
-
-				for(int n = 0, Left = SnapshotSize; Left > 0; n++)
+				for(int n = 0, Left = CompressedSize; Left > 0; n++)
 				{
-					int Chunk = Left < MaxSize ? Left : MaxSize;
+					int Chunk = Left < MAX_SNAPSHOT_PACKSIZE ? Left : MAX_SNAPSHOT_PACKSIZE;
 					Left -= Chunk;
 
 					if(NumPackets == 1)
 					{
 						CMsgPacker Msg(NETMSG_SNAPSINGLE, true);
 						Msg.AddInt(m_CurrentGameTick);
-						Msg.AddInt(m_CurrentGameTick-DeltaTick);
+						Msg.AddInt(m_CurrentGameTick - DeltaTick);
 						Msg.AddInt(Crc);
 						Msg.AddInt(Chunk);
-						Msg.AddRaw(&aCompData[n*MaxSize], Chunk);
+						Msg.AddRaw(&aCompData[n * MAX_SNAPSHOT_PACKSIZE], Chunk);
 						SendMsg(&Msg, MSGFLAG_FLUSH, i);
 					}
 					else
 					{
 						CMsgPacker Msg(NETMSG_SNAP, true);
 						Msg.AddInt(m_CurrentGameTick);
-						Msg.AddInt(m_CurrentGameTick-DeltaTick);
+						Msg.AddInt(m_CurrentGameTick - DeltaTick);
 						Msg.AddInt(NumPackets);
-						Msg.AddInt(n);
+						Msg.AddInt(n); // packet number
 						Msg.AddInt(Crc);
 						Msg.AddInt(Chunk);
-						Msg.AddRaw(&aCompData[n*MaxSize], Chunk);
+						Msg.AddRaw(&aCompData[n * MAX_SNAPSHOT_PACKSIZE], Chunk);
 						SendMsg(&Msg, MSGFLAG_FLUSH, i);
 					}
 				}
@@ -622,7 +616,7 @@ void CServer::DoSnapshot()
 			{
 				CMsgPacker Msg(NETMSG_SNAPEMPTY, true);
 				Msg.AddInt(m_CurrentGameTick);
-				Msg.AddInt(m_CurrentGameTick-DeltaTick);
+				Msg.AddInt(m_CurrentGameTick - DeltaTick);
 				SendMsg(&Msg, MSGFLAG_FLUSH, i);
 
 				if(DeltaSize < 0)

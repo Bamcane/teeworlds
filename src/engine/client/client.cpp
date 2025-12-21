@@ -1397,9 +1397,9 @@ void CClient::ProcessServerPacket(CNetChunk *pPacket)
 				if(m_SnapshotParts == (unsigned)((1<<NumParts)-1))
 				{
 					static CSnapshot s_Emptysnap;
+					static char aTmpBuffer2[CSnapshot::MAX_SIZE];
+					static char aTmpBuffer3[CSnapshot::MAX_SIZE];
 					CSnapshot *pDeltaShot = &s_Emptysnap;
-					unsigned char aTmpBuffer2[CSnapshot::MAX_SIZE];
-					unsigned char aTmpBuffer3[CSnapshot::MAX_SIZE];
 					CSnapshot *pTmpBuffer3 = (CSnapshot*)aTmpBuffer3;	// Fix compiler warning for strict-aliasing
 
 					int CompleteSize = (NumParts-1) * MAX_SNAPSHOT_PACKSIZE + PartSize;
